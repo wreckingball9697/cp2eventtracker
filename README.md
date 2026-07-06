@@ -7,3 +7,5 @@
 * Game Clock can be fast forwarded or rewound by inputting time in "Set game clock".
 
 For additional information regarding prestige mode, visit the wiki: https://cp2.fandom.com/wiki/Prestige
+
+<img width="1655" height="861" alt="image" src="https://github.com/user-attachments/assets/74ae82c5-b865-4587-be3a-da1c005042a3" />
