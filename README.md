@@ -8,6 +8,6 @@
 
 For additional information regarding prestige mode, visit the wiki: https://cp2.fandom.com/wiki/Prestige.  
 
-Ideas for changes/updates? Hit me up on the CP2 discord @ wereckingball
+Ideas for changes/updates? Hit me up on the CP2 discord @ wreckingball
 
 <img width="1655" height="861" alt="image" src="https://github.com/user-attachments/assets/74ae82c5-b865-4587-be3a-da1c005042a3" />

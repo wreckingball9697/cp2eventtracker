@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="author" content="wreckingball">
 <meta name="version" content="1.0.0">
 <title>CP2 Events</title>
@@ -54,7 +55,7 @@
     color: var(--text-dim);
   }
   #controls input[type="number"] {
-    width: 80px;
+    width: 65px;
     background: #0f1115;
     border: 1px solid var(--panel-border);
     color: var(--text);
@@ -133,7 +134,7 @@
   #gameClock {
     margin-left: auto;
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 10px;
     font-variant-numeric: tabular-nums;
     font-size: 13px;
@@ -151,6 +152,41 @@
     font-size: 30px;
     font-weight: 700;
   }
+  #gameClock .clock-main {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  #gameClock .stepper {
+    display: flex;
+    gap: 6px;
+  }
+  #gameClock .step-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+  }
+  #gameClock .step-group span {
+    font-size: 9px;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--text-dim);
+    line-height: 1;
+  }
+  #gameClock .step-btn {
+    width: 22px;
+    height: 16px;
+    padding: 0;
+    font-size: 9px;
+    line-height: 1;
+    background: #2a2f3a;
+    border: 1px solid #3a4150;
+    border-radius: 3px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  #gameClock .step-btn:hover { background: #343b48; }
 
   /* ~~~~~ Main Layout ~~~~~ */
   #main {
@@ -301,15 +337,17 @@
 <div id="controls">
   <div class="group">
     <label>Set game clock</label>
-    <input type="number" id="ffMin" placeholder="min" style="width:60px;">
+    <input type="number" id="ffMin" placeholder="min">
     <span>:</span>
-    <input type="number" id="ffSec" placeholder="sec" style="width:60px;">
+    <input type="number" id="ffSec" placeholder="sec">
     <button id="ffBtn">Set</button>
   </div>
 
   <div class="group">
     <label>Spine killed at</label>
-    <input type="number" id="ultraInput" placeholder="sec">
+    <input type="number" id="ultraInputMin" placeholder="min">
+    <span>:</span>
+    <input type="number" id="ultraInputSec" placeholder="sec">
     <button id="ultraBtn" class="primary">Add Spine Killed Time</button>
   </div>
 
@@ -326,7 +364,21 @@
     </div>
   </div>
 
-  <div id="gameClock">Game clock <b id="gameClockVal">00:00:00</b></div>
+  <div id="gameClock">
+    <div class="clock-main">Game clock <b id="gameClockVal">00:00:00</b></div>
+    <div class="stepper">
+      <div class="step-group">
+        <button class="step-btn" id="clockMinUp">&#9650;</button>
+        <span>min</span>
+        <button class="step-btn" id="clockMinDown">&#9660;</button>
+      </div>
+      <div class="step-group">
+        <button class="step-btn" id="clockSecUp">&#9650;</button>
+        <span>sec</span>
+        <button class="step-btn" id="clockSecDown">&#9660;</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="main">
@@ -349,7 +401,7 @@
   const PERIODIC_EVENTS = [
     { id: "PeriodicSquadRaptors",              name: "Raptors",              period: 630,  delay: 20,   desc: ""},
     { id: "S1PeriodicPlasmaChaserssoftenrage", name: "Plasma Chasers",       period: 900,  delay: 20,   desc: ""},
-    { id: "DropSpinePeriodicd",                name: "Spine",                period: 1980, delay: 0,    desc: ""},
+    { id: "DropSpinePeriodicd",                name: "Spine",                period: 1987, delay: 0,    desc: ""},
     { id: "DropZerglingsPeriodic",             name: "Zergling",             period: 780,  delay: 20,   desc: ""},
     { id: "DropAberrationPeriodic",            name: "Aberration",           period: 840,  delay: 20,   desc: ""},
     { id: "DropRoachesPeriodic",               name: "Roaches",              period: 550,  delay: 20,   desc: ""},
@@ -545,11 +597,24 @@
         const currentElapsed = getGameElapsed();
         manualOffset += val - currentElapsed;
       }
-      minInput.value = "";
-      secInput.value = "";
       render();
     }
   });
+
+  function adjustGameClock(deltaSeconds) {
+    if (isPaused) {
+      pausedElapsed = Math.max(0, pausedElapsed + deltaSeconds);
+    } else {
+      const currentElapsed = getGameElapsed();
+      const newVal = Math.max(0, currentElapsed + deltaSeconds);
+      manualOffset += newVal - currentElapsed;
+    }
+    render();
+  }
+  document.getElementById("clockMinUp").addEventListener("click", () => adjustGameClock(60));
+  document.getElementById("clockMinDown").addEventListener("click", () => adjustGameClock(-60));
+  document.getElementById("clockSecUp").addEventListener("click", () => adjustGameClock(1));
+  document.getElementById("clockSecDown").addEventListener("click", () => adjustGameClock(-1));
 
   document.getElementById("pauseBtn").addEventListener("click", () => {
     const btn = document.getElementById("pauseBtn");
@@ -567,8 +632,11 @@
   });
 
   document.getElementById("ultraBtn").addEventListener("click", () => {
-    const input = document.getElementById("ultraInput");
-    const val = parseFloat(input.value);
+    const minInput = document.getElementById("ultraInputMin");
+    const secInput = document.getElementById("ultraInputSec");
+    const min = parseFloat(minInput.value) || 0;
+    const sec = parseFloat(secInput.value) || 0;
+    const val = min * 60 + sec;
     if (!isNaN(val) && val >= 0) {
       ultra = { delay: val };
       render();
@@ -582,7 +650,8 @@
   }
   onEnterClick("ffMin", "ffBtn");
   onEnterClick("ffSec", "ffBtn");
-  onEnterClick("ultraInput", "ultraBtn");
+  onEnterClick("ultraInputMin", "ultraBtn");
+  onEnterClick("ultraInputSec", "ultraBtn");
 
   document.getElementById("resetBtn").addEventListener("click", () => {
     if (!confirm("Sure to reset game clock?")) return;
@@ -592,7 +661,8 @@
     isPaused = false;
     pausedElapsed = 0;
     document.getElementById("pauseBtn").textContent = "Pause Clock";
-    document.getElementById("ultraInput").value = "";
+    document.getElementById("ultraInputMin").value = "";
+    document.getElementById("ultraInputSec").value = "";
     document.getElementById("ffMin").value = "";
     document.getElementById("ffSec").value = "20";
     render();
