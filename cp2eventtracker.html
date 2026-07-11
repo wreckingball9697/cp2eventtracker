@@ -130,6 +130,70 @@
   }
   #filterMenu label:hover { background: #262b36; }
 
+  /* ~~~~~ Sound dropdown ~~~~~ */
+  #soundWrap { position: relative; }
+  #soundMenu {
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 380px;
+    max-height: 380px;
+    overflow-y: auto;
+    background: #1d212b;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 8px;
+    box-shadow: 0 12px 28px -6px rgba(0,0,0,.5);
+    z-index: 30;
+  }
+  #soundMenu.open { display: flex; }
+  #soundMenu .preview-row,
+  #soundMenu .sound-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-bottom: 8px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  #soundMenu .preview-row button,
+  #soundMenu .sound-actions button {
+    flex: 1 1 auto;
+    padding: 5px 6px;
+    font-size: 11px;
+  }
+  .sound-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    padding: 4px 6px;
+    border-radius: 5px;
+  }
+  .sound-row:hover { background: #262b36; }
+  .sound-row .ev-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sound-row select {
+    background: #0f1115;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    border-radius: 5px;
+    padding: 3px 4px;
+    font-size: 11px;
+  }
+  .sound-row .preview-btn {
+    padding: 3px 7px;
+    font-size: 11px;
+  }
+
   #gameClock {
     margin-left: auto;
     display: flex;
@@ -363,6 +427,11 @@
     </div>
   </div>
 
+  <div id="soundWrap">
+    <button id="soundBtn">Sound Alerts &#9662;</button>
+    <div id="soundMenu"></div>
+  </div>
+
   <div id="gameClock">
     <div class="clock-main">Game clock <b id="gameClockVal">00:00:00</b></div>
     <div class="stepper">
@@ -506,6 +575,62 @@
     localStorage.setItem(HIDDEN_IDS_KEY, JSON.stringify([...hiddenIds]));
   }
 
+  // ~~~~~ Sound alerts ~~~~~
+  const SOUND_PRESETS = [
+    { id: "ding",   label: "Soft Ding",     notes: [{ type: "sine",     freq: 880, start: 0,    dur: 0.15, gain: 0.3 }] },
+    { id: "double", label: "Double Beep",   notes: [{ type: "square",   freq: 660, start: 0,    dur: 0.08, gain: 0.25 }, { type: "square", freq: 660, start: 0.12, dur: 0.08, gain: 0.25 }] },
+    { id: "chirp",  label: "Rising Chirp",  sweep: { type: "triangle", from: 440, to: 880, dur: 0.2, gain: 0.3 } },
+    { id: "alert",  label: "Alert (Triple)",notes: [{ type: "sawtooth", freq: 550, start: 0, dur: 0.07, gain: 0.25 }, { type: "sawtooth", freq: 550, start: 0.1, dur: 0.07, gain: 0.25 }, { type: "sawtooth", freq: 550, start: 0.2, dur: 0.07, gain: 0.25 }] },
+  ];
+  const OFFSET_OPTIONS = [5, 10, 15, 20, 30];
+
+  let audioCtx = null;
+  function getAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+  // Browsers block audio until a user gesture; unlock on the first click anywhere.
+  document.addEventListener("click", () => getAudioCtx(), { once: true });
+
+  function playOsc(ctx, startTime, type, freqFrom, freqTo, dur, gainVal) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freqFrom, startTime);
+    if (freqTo !== freqFrom) osc.frequency.linearRampToValueAtTime(freqTo, startTime + dur);
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(gainVal, startTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + dur + 0.02);
+  }
+
+  function playTone(soundId) {
+    const preset = SOUND_PRESETS.find(p => p.id === soundId);
+    if (!preset) return;
+    const ctx = getAudioCtx();
+    const now = ctx.currentTime;
+    if (preset.sweep) {
+      const sw = preset.sweep;
+      playOsc(ctx, now, sw.type, sw.from, sw.to, sw.dur, sw.gain);
+    } else {
+      preset.notes.forEach(n => playOsc(ctx, now + n.start, n.type, n.freq, n.freq, n.dur, n.gain));
+    }
+  }
+
+  const SOUND_SETTINGS_KEY = "cp2timer_soundSettings";
+  let soundSettings = JSON.parse(localStorage.getItem(SOUND_SETTINGS_KEY) || "{}");
+
+  function saveSoundSettings() {
+    localStorage.setItem(SOUND_SETTINGS_KEY, JSON.stringify(soundSettings));
+  }
+
+  // Tracks the last event occurrence (by its nextGameTime) we've already alerted for,
+  // so each occurrence only fires its sound once even though render() polls every 250ms.
+  const notifiedOccurrence = {};
+
   function getGameElapsed() {
     if (isPaused) return pausedElapsed;
     const realElapsedSec = (Date.now() - gameStartReal) / 1000;
@@ -543,6 +668,16 @@
       const gameSecRemaining = nextGameTime - elapsed;
       rows.push({ id: ULTRA_ID, name: "Ultra", desc: "", nextGameTime, gameSecRemaining, ultra: true });
     }
+
+    rows.forEach(r => {
+      const cfg = soundSettings[r.id];
+      if (!cfg || !cfg.enabled) return;
+      const alreadyNotified = notifiedOccurrence[r.id] === r.nextGameTime;
+      if (!alreadyNotified && r.gameSecRemaining > 0 && r.gameSecRemaining <= cfg.offsetSec) {
+        playTone(cfg.soundId);
+        notifiedOccurrence[r.id] = r.nextGameTime;
+      }
+    });
 
     const visibleRows = rows.filter(r => !hiddenIds.has(r.id));
     visibleRows.sort((a, b) => a.gameSecRemaining - b.gameSecRemaining);
@@ -707,6 +842,120 @@
     }
   });
 
+  function buildSoundMenu() {
+    const menu = document.getElementById("soundMenu");
+    menu.innerHTML = "";
+
+    const previewRow = document.createElement("div");
+    previewRow.className = "preview-row";
+    SOUND_PRESETS.forEach(preset => {
+      const btn = document.createElement("button");
+      btn.textContent = "▶ " + preset.label;
+      btn.addEventListener("click", () => playTone(preset.id));
+      previewRow.appendChild(btn);
+    });
+    menu.appendChild(previewRow);
+
+    const items = PERIODIC_EVENTS.map(ev => ({ id: ev.id, name: ev.name }));
+    items.push({ id: ULTRA_ID, name: "Ultra" });
+
+    const actionsRow = document.createElement("div");
+    actionsRow.className = "sound-actions";
+    const allOnBtn = document.createElement("button");
+    allOnBtn.textContent = "All On";
+    allOnBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      items.forEach(item => {
+        if (!soundSettings[item.id]) {
+          soundSettings[item.id] = { enabled: true, offsetSec: 10, soundId: SOUND_PRESETS[0].id };
+        } else {
+          soundSettings[item.id].enabled = true;
+        }
+      });
+      saveSoundSettings();
+      buildSoundMenu();
+    });
+    const allOffBtn = document.createElement("button");
+    allOffBtn.textContent = "All Off";
+    allOffBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      items.forEach(item => {
+        if (soundSettings[item.id]) soundSettings[item.id].enabled = false;
+      });
+      saveSoundSettings();
+      buildSoundMenu();
+    });
+    actionsRow.append(allOnBtn, allOffBtn);
+    menu.appendChild(actionsRow);
+
+    items.forEach(item => {
+      if (!soundSettings[item.id]) {
+        soundSettings[item.id] = { enabled: false, offsetSec: 10, soundId: SOUND_PRESETS[0].id };
+      }
+      const cfg = soundSettings[item.id];
+
+      const row = document.createElement("div");
+      row.className = "sound-row";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = cfg.enabled;
+
+      const name = document.createElement("span");
+      name.className = "ev-name";
+      name.textContent = item.name;
+
+      const offsetSelect = document.createElement("select");
+      OFFSET_OPTIONS.forEach(sec => {
+        const opt = document.createElement("option");
+        opt.value = sec;
+        opt.textContent = sec + "s before";
+        offsetSelect.appendChild(opt);
+      });
+      offsetSelect.value = cfg.offsetSec;
+
+      const soundSelect = document.createElement("select");
+      SOUND_PRESETS.forEach(preset => {
+        const opt = document.createElement("option");
+        opt.value = preset.id;
+        opt.textContent = preset.label;
+        soundSelect.appendChild(opt);
+      });
+      soundSelect.value = cfg.soundId;
+
+      const previewBtn = document.createElement("button");
+      previewBtn.className = "preview-btn";
+      previewBtn.textContent = "▶";
+      previewBtn.addEventListener("click", () => playTone(soundSelect.value));
+
+      checkbox.addEventListener("change", () => {
+        cfg.enabled = checkbox.checked;
+        saveSoundSettings();
+      });
+      offsetSelect.addEventListener("change", () => {
+        cfg.offsetSec = parseInt(offsetSelect.value, 10);
+        saveSoundSettings();
+      });
+      soundSelect.addEventListener("change", () => {
+        cfg.soundId = soundSelect.value;
+        saveSoundSettings();
+      });
+
+      row.append(checkbox, name, offsetSelect, soundSelect, previewBtn);
+      menu.appendChild(row);
+    });
+  }
+
+  document.getElementById("soundBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    document.getElementById("soundMenu").classList.toggle("open");
+  });
+  document.addEventListener("click", (e) => {
+    if (!document.getElementById("soundWrap").contains(e.target)) {
+      document.getElementById("soundMenu").classList.remove("open");
+    }
+  });
+
   document.getElementById("filterAllBtn").addEventListener("click", () => {
     hiddenIds.clear();
     document.querySelectorAll("#filterMenu input[type=checkbox]").forEach(cb => cb.checked = true);
@@ -725,6 +974,7 @@
 
   buildFilterMenu();
   updateFilterBadge();
+  buildSoundMenu();
   renderStatic();
   render();
   setInterval(render, 250);
