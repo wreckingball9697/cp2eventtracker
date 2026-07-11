@@ -342,14 +342,30 @@
     border: 2px solid var(--accent);
     padding: 26px 28px;
     box-shadow: 0 0 24px -4px rgba(255, 176, 32, 0.4);
+    color: var(--accent);
+  }
+  .event-row.next.imminent {
+    animation: next-event-flash 2.8s ease-in-out infinite;
+  }
+  @keyframes next-event-flash {
+    0%, 100% {
+      box-shadow: 0 0 24px -4px rgba(255, 176, 32, 0.4);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    50% {
+      box-shadow: 0 0 46px 8px rgba(255, 214, 133, 0.95);
+      border-color: #fff3d6;
+      color: #fff3d6;
+    }
   }
   .event-row.next .name {
     font-size: 30px;
-    color: var(--accent);
+    color: inherit;
   }
   .event-row.next .timer .gametime {
     font-size: 46px;
-    color: var(--accent);
+    color: inherit;
   }
   .event-row.next .timer .countdown {
     font-size: 16px;
@@ -652,6 +668,30 @@
     return `${pad(h)}:${pad(m)}:${pad(sec)}`;
   }
 
+  const eventRowEls = new Map();
+
+  function createEventRow() {
+    const row = document.createElement("div");
+    row.className = "event-row";
+    row.innerHTML = `
+      <div class="left">
+        <div class="name"></div>
+        <div class="desc"></div>
+      </div>
+      <div class="timer">
+        <span class="gametime"></span>
+        <span class="countdown"></span>
+      </div>
+    `;
+    return {
+      row,
+      nameEl: row.querySelector(".name"),
+      descEl: row.querySelector(".desc"),
+      gametimeEl: row.querySelector(".gametime"),
+      countdownEl: row.querySelector(".countdown"),
+    };
+  }
+
   function render() {
     const elapsed = getGameElapsed();
 
@@ -683,18 +723,34 @@
     visibleRows.sort((a, b) => a.gameSecRemaining - b.gameSecRemaining);
 
     const listEl = document.getElementById("eventList");
-    listEl.innerHTML = visibleRows.map((r, i) => `
-      <div class="event-row ${i === 0 ? "next" : ""} ${r.ultra ? "ultra" : ""}">
-        <div class="left">
-          <div class="name">${r.name}</div>
-          <div class="desc">${r.desc}</div>
-        </div>
-        <div class="timer">
-          <span class="gametime">${fmtHMS(r.nextGameTime)}</span>
-          <span class="countdown">in ${fmtHMS(r.gameSecRemaining)}</span>
-        </div>
-      </div>
-    `).join("");
+
+    for (const id of eventRowEls.keys()) {
+      if (!visibleRows.some(r => r.id === id)) {
+        eventRowEls.get(id).row.remove();
+        eventRowEls.delete(id);
+      }
+    }
+
+    visibleRows.forEach((r, i) => {
+      let entry = eventRowEls.get(r.id);
+      if (!entry) {
+        entry = createEventRow();
+        eventRowEls.set(r.id, entry);
+      }
+
+      const isImminent = i === 0 && r.gameSecRemaining <= 15;
+      const wantedClass = `event-row ${i === 0 ? "next" : ""} ${isImminent ? "imminent" : ""} ${r.ultra ? "ultra" : ""}`.trim();
+      if (entry.row.className !== wantedClass) entry.row.className = wantedClass;
+      entry.nameEl.textContent = r.name;
+      entry.descEl.textContent = r.desc;
+      entry.gametimeEl.textContent = fmtHMS(r.nextGameTime);
+      entry.countdownEl.textContent = `in ${fmtHMS(r.gameSecRemaining)}`;
+
+      const wantedNode = listEl.children[i];
+      if (wantedNode !== entry.row) {
+        listEl.insertBefore(entry.row, wantedNode || null);
+      }
+    });
   }
 
   function escapeHtml(str) {
