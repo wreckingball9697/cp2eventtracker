@@ -5,6 +5,9 @@
 * To add Ultra drops to the "Upcoming Events" list, add the time you kill the first spine.
 * Refreshing the page or clicking Reset Game Clock will reset all items on the page except your Filter selection.
 * Game Clock can be fast forwarded or rewound by inputting time in "Set game clock".
+* Events can be hidden.
+* Sound alerts can be added to each event at a specific time before firing.
+* Upcoming event now flashes at 15 seconds before firing.
 
 For additional information regarding prestige mode, visit the wiki: https://cp2.fandom.com/wiki/Prestige.  
 
